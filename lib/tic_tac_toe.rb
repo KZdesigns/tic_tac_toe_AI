@@ -12,19 +12,47 @@ class Board
   end
 
   def [](pos)
-    row, col = pos[0], pos[1]
+    # Note the assignment of `row, col` to `pos`; this unpacks,
+    # or "destructures" the array. Read more here:
+    # http://tony.pitluga.com/2011/08/08/destructuring-with-ruby.html
+
+    row, col = pos
     @rows[row][col]
   end
 
   def []=(pos, mark)
     raise "mark already placed there!" unless empty?(pos)
 
-    row, col = pos[0], pos[1]
+    row, col = pos
     @rows[row][col] = mark
+  end
+
+  def open_positions
+    open_positions = []
+
+    @rows.each_with_index do |row, row_index|
+      row.each_with_index do |col, col_index|
+        open_positions.push([row_index, col_index]) unless col
+      end
+    end
+
+    open_positions
+  end
+
+  def next_mark
+    number_of_marks(:x) > number_of_marks(:o) ? :o : :x
+  end
+
+  def number_of_marks(symbol)
+    rows.flatten.inject(0) do |count, spot|
+      count += 1 if spot == symbol
+      count
+    end
   end
 
   def cols
     cols = [[], [], []]
+
     @rows.each do |row|
       row.each_with_index do |mark, col_idx|
         cols[col_idx] << mark
@@ -39,10 +67,7 @@ class Board
     up_diag = [[0, 2], [1, 1], [2, 0]]
 
     [down_diag, up_diag].map do |diag|
-      # Note the `row, col` inside the block; this unpacks, or
-      # "destructures" the argument. Read more here:
-      # http://tony.pitluga.com/2011/08/08/destructuring-with-ruby.html
-      diag.map { |row, col| @rows[row][col] }
+      diag.map { |pos| self[pos] }
     end
   end
 
@@ -59,18 +84,20 @@ class Board
     return false if won?
 
     # no empty space?
-    @rows.all? { |row| row.none? { |el| el.nil? }}
+    @rows.all?(&:all?)
   end
 
   def over?
-    # don't use Ruby's `or` operator; always prefer `||`
+    # style guide says to use `or`, but I (and most others) prefer to
+    # use `||` all the time. We don't like two ways to do something
+    # this simple.
     won? || tied?
   end
 
   def winner
     (rows + cols + diagonals).each do |triple|
-      return :x if triple == [:x, :x, :x]
-      return :o if triple == [:o, :o, :o]
+      return :x if triple == %i(x x x)
+      return :o if triple == %i(o o o)
     end
 
     nil
@@ -94,8 +121,8 @@ class TicTacToe
 
   def initialize(player1, player2)
     @board = Board.new
-    @players = { :x => player1, :o => player2 }
-    @turn = :x
+    @players = { x: player1, o: player2 }
+    @turn = @board.next_mark
   end
 
   def run
@@ -117,6 +144,7 @@ class TicTacToe
   end
 
   private
+
   def place_mark(pos, mark)
     if self.board.empty?(pos)
       self.board[pos] = mark
@@ -135,7 +163,7 @@ class TicTacToe
     end
 
     # swap next whose turn it will be next
-    @turn = ((self.turn == :x) ? :o : :x)
+    @turn = self.board.next_mark
   end
 end
 
@@ -146,11 +174,16 @@ class HumanPlayer
     @name = name
   end
 
-  def move(game, mark)
+  def move(game, _mark)
     game.show
-    while true
+
+    loop do
       puts "#{@name}: please select your space"
-      row, col = gets.chomp.split(",").map(&:to_i)
+
+      row, col = gets.chomp.split(",").map do |coord|
+        Integer(coord)
+      end
+
       if HumanPlayer.valid_coord?(row, col)
         return [row, col]
       else
@@ -159,9 +192,8 @@ class HumanPlayer
     end
   end
 
-  private
   def self.valid_coord?(row, col)
-    [row, col].all? { |coord| (0..2).include?(coord) }
+    [row, col].all? { |coord| (0..2).cover?(coord) }
   end
 end
 
@@ -177,16 +209,17 @@ class ComputerPlayer
   end
 
   private
+
   def winner_move(game, mark)
     (0..2).each do |row|
       (0..2).each do |col|
-        board = game.board.dup
+        dup_board = game.board.dup
         pos = [row, col]
 
-        next unless board.empty?(pos)
-        board[pos] = mark
+        next unless dup_board.empty?(pos)
+        dup_board[pos] = mark
 
-        return pos if board.winner == mark
+        return pos if dup_board.winner == mark
       end
     end
 
@@ -196,7 +229,8 @@ class ComputerPlayer
 
   def random_move(game)
     board = game.board
-    while true
+
+    loop do
       range = (0..2).to_a
       pos = [range.sample, range.sample]
 
@@ -205,7 +239,7 @@ class ComputerPlayer
   end
 end
 
-if __FILE__ == $PROGRAM_NAME
+if $PROGRAM_NAME == __FILE__
   puts "Play the dumb computer!"
   hp = HumanPlayer.new("Ned")
   cp = ComputerPlayer.new
